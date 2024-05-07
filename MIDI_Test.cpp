@@ -1,4 +1,3 @@
-#include <cstdio> // for printing to stdout
 #include <iostream>
 #include <string>
 #include <vector>
@@ -23,7 +22,6 @@
 float keyWidth, keyHeight;
 float keyPadding = 2.f;
 
-
 int screenWidth, screenHeight;
 
 const int numNotes = 109;
@@ -31,10 +29,9 @@ const int numNotes = 109;
 // using namespace gam;
 using namespace al;
 
-
 class FloatingNote
 {
-    public:
+public:
     Mesh mesh;
 
     bool growing = true;
@@ -53,7 +50,6 @@ class FloatingNote
         this->height = 0;
 
         addRect(this->mesh, 1, 1, 1, 1);
-
     }
 
     void update(double dt)
@@ -61,35 +57,38 @@ class FloatingNote
         if (this->growing)
         {
             this->height += this->speed * dt;
-        }else{
+        }
+        else
+        {
             this->y += this->speed * dt;
         }
     }
 
-    void draw(Graphics &g){
-        if (this->y < screenWidth && this->x > 0 && this->x < screenWidth){
+    void draw(Graphics &g)
+    {
+        if (this->y < screenWidth && this->x > 0 && this->x < screenWidth)
+        {
 
             g.pushMatrix();
-            g.translate(this->x, this->y - this->height/2);
+            g.translate(this->x, this->y - this->height / 2);
             g.scale(this->width, this->height);
 
-            g.color(1,1,1);
+            g.color(1, 1, 1);
 
-            if (this->growing){
+            if (this->growing)
+            {
                 g.color(Color(HSV(this->x / 1200, 1, 1), 1));
             }
 
-
             g.draw(this->mesh);
             g.popMatrix();
-
         }
     }
 };
 
 class FloatingNotes
 {
-    public:
+public:
     FloatingNote *notes[109];
 
     std::vector<FloatingNote *> floaters;
@@ -104,7 +103,7 @@ class FloatingNotes
 
     void noteDown(int note)
     {
-        std::cout << "Note down " << note << std::endl;
+       // std::cout << "Note down " << note << std::endl;
         if (this->notes[note] == nullptr)
         {
             int x = (keyWidth + keyPadding * 2) * (note - 50) + keyPadding;
@@ -115,8 +114,9 @@ class FloatingNotes
 
     void noteUp(int note)
     {
-        std::cout << "Note up " << note << std::endl;
-        if (this->notes[note] != nullptr){
+        //std::cout << "Note up " << note << std::endl;
+        if (this->notes[note] != nullptr)
+        {
             this->notes[note]->growing = false;
             this->notes[note] = nullptr;
         }
@@ -124,19 +124,24 @@ class FloatingNotes
 
     void update(double dt)
     {
-        for (int i = 0; i < floaters.size(); i++){
+        for (int i = 0; i < floaters.size(); i++)
+        {
             floaters[i]->update(dt);
+            if (floaters[i]->y - floaters[i]->height - 10 > screenHeight){
+                delete floaters[i];
+                floaters.erase(floaters.begin() + i);
+            }
         }
     }
 
-
-    void draw(Graphics &g){
-        for (int i = 0; i < floaters.size(); i++){
+    void draw(Graphics &g)
+    {
+        for (int i = 0; i < floaters.size(); i++)
+        {
             floaters[i]->draw(g);
         }
     }
 };
-
 
 class SineEnv : public SynthVoice
 {
@@ -148,9 +153,6 @@ public:
     // envelope follower to connect audio output to graphics
     gam::EnvFollow<> mEnvFollow;
 
-    Mesh mMesh;
-
-
     // Initialize voice. This function will only be called once per voice when
     // it is created. Voices will be reused if they are idle.
     void init() override
@@ -160,18 +162,11 @@ public:
         mAmpEnv.levels(0, 1, 1, 0);
         mAmpEnv.sustainPoint(2); // Make point 2 sustain until a release is issued
 
-        addRect(mMesh, 1, 1, 0.5, 0.5);
-
         createInternalTriggerParameter("amplitude", 0.3, 0.0, 1.0);
         createInternalTriggerParameter("frequency", 60, 20, 5000);
         createInternalTriggerParameter("attackTime", 0.0, 0.01, 3.0);
         createInternalTriggerParameter("releaseTime", 0.4, 0.1, 10.0);
         createInternalTriggerParameter("pan", 0.0, -1.0, 1.0);
-
-        createInternalTriggerParameter("pianoKeyX");
-        createInternalTriggerParameter("pianoKeyY");
-        createInternalTriggerParameter("pianoKeyWidth");
-        createInternalTriggerParameter("pianoKeyHeight");
     }
 
     // The audio processing function
@@ -203,33 +198,10 @@ public:
             free();
     }
 
-    // The graphics processing function
     void onProcess(Graphics &g) override
     {
-        float frequency = getInternalParameterValue("frequency");
-        float amplitude = getInternalParameterValue("amplitude");
 
-        float x = getInternalParameterValue("pianoKeyX");
-        float y = getInternalParameterValue("pianoKeyY");
-
-        float w = getInternalParameterValue("pianoKeyWidth");
-        float h = getInternalParameterValue("pianoKeyHeight");
-
-        float hue = (frequency - 200) / 1000;
-        float sat = amplitude;
-        float val = 0.9;
-
-        g.pushMatrix();
-        g.translate(x, y);
-        g.scale(w, h);
-
-        g.color(Color(HSV(hue, sat, val), mEnvFollow.value() * 30));
-
-        g.draw(mMesh);
-        g.popMatrix();
     }
-
-
 
     // The triggering functions just need to tell the envelope to start or release
     // The audio processing function checks when the envelope is done to remove
@@ -243,27 +215,23 @@ public:
     {
         mAmpEnv.release();
     }
-
-    
 };
 
-struct CallbackData{
-    SynthGUIManager<SineEnv>* synthManager;
-    FloatingNotes* notes;
+struct CallbackData
+{
+    SynthGUIManager<SineEnv> *synthManager;
+    FloatingNotes *notes;
 };
-
 
 void midiCallback(double deltaTime, std::vector<unsigned char> *msg,
                   void *userData)
 {
     unsigned numBytes = msg->size();
 
-    CallbackData* data = static_cast<CallbackData *>(userData);
+    CallbackData *data = static_cast<CallbackData *>(userData);
     SynthGUIManager<SineEnv> *synthManager = data->synthManager;
-    FloatingNotes* notes = data->notes;
+    FloatingNotes *notes = data->notes;
 
-    std::cout << "MIDI MESSAGE" << std::endl;
-   
     if (numBytes > 0)
     {
         // The first byte is the status byte indicating the message type
@@ -286,14 +254,9 @@ void midiCallback(double deltaTime, std::vector<unsigned char> *msg,
                 synthManager->voice()->setInternalParameterValue(
                     "frequency", ::pow(2.f, ((msg->at(1)) - 69.f) / 12.f) * 432.f);
 
-                synthManager->voice()->setInternalParameterValue("pianoKeyWidth", 10);
-                synthManager->voice()->setInternalParameterValue("pianoKeyHeight", 10);
-                synthManager->voice()->setInternalParameterValue("pianoKeyX", (msg->at(1)) * 10);
-                synthManager->voice()->setInternalParameterValue("pianoKeyY", 10);
-
                 synthManager->triggerOn((int)msg->at(1));
 
-                notes->noteDown((int) msg->at(1));
+                notes->noteDown((int)msg->at(1));
 
                 break;
 
@@ -337,9 +300,6 @@ void midiCallback(double deltaTime, std::vector<unsigned char> *msg,
     }
 }
 
-
-
-
 // We make an app.
 class MyApp : public App
 {
@@ -353,8 +313,6 @@ public:
     FloatingNotes notes;
 
     CallbackData callbackData;
-
-    
 
     // Mesh and variables for drawing piano keys
     Mesh meshKey;
@@ -408,7 +366,6 @@ public:
         // Set our callback function.  This should be done immediately after
         // opening the port to avoid having incoming messages written to the
         // queue instead of sent to the callback function.
-        std::string message = "hallo";
         RtMidiIn.setCallback(&midiCallback, &callbackData); //&synthManager
 
         // Don't ignore sysex, timing, or active sensing messages.
@@ -439,35 +396,12 @@ public:
         // This example uses only the orthogonal projection for 2D drawing
         g.camera(Viewpoint::ORTHO_FOR_2D); // Ortho [0:width] x [0:height]
 
-        /*
-             // Drawing white piano keys
-            for(int i = 0; i < 52; i++) {
-              int index = i;
-              g.pushMatrix();
-
-              float c = 0.9;
-
-
-              float x = (keyWidth + keyPadding * 2) * index + keyPadding;
-              float y = 10;
-
-              g.translate(x, y);
-              g.color(c);
-              g.tint(c);
-              g.draw(meshKey);
-
-              g.tint(1);
-
-              g.popMatrix();
-            }
-            */
-
-        //synthManager.render(g);
+        // synthManager.render(g);
         notes.draw(g);
     }
 
     // Whenever a key is pressed, this function is called
-    void onExit() override { imguiShutdown(); }
+    void onExit() override {  }
 };
 
 int main()
