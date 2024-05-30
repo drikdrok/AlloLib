@@ -28,8 +28,10 @@ using namespace al;
 // virtual piano.
 
 float clamp(float value, float min, float max) {
-    if (value > max) return max;
-    if (value < min) return min;
+    if (value > max)
+        return max;
+    if (value < min)
+        return min;
     return value;
 }
 
@@ -46,10 +48,10 @@ class Theremin : public SynthVoice {
    public:
     // Unit generators
     gam::Pan<> mPan;
-   
-   
+
     gam::Saw<> mOsc;
-   
+    gam::Sine<> mOsc2;
+
     gam::Env<3> mAmpEnv;
 
     // Vibrato
@@ -57,6 +59,7 @@ class Theremin : public SynthVoice {
     gam::ADSR<> mVibEnv;
 
     gam::OnePole<> lpf;
+    gam::OnePole<> hpf;
 
     float vibValue;
 
@@ -67,7 +70,8 @@ class Theremin : public SynthVoice {
 
     // Initialize voice. This function will only be called once per voice when
     // it is created. Voices will be reused if they are idle.
-    void init() override {
+    void
+    init() override {
         // Intialize envelope
         mAmpEnv.curve(0);  // make segments lines
         mAmpEnv.levels(0, 1, 1, 0);
@@ -78,6 +82,9 @@ class Theremin : public SynthVoice {
 
         lpf.type(gam::LOW_PASS);
         lpf.freq(1800);
+
+        hpf.type(gam::SMOOTHING);
+        hpf.freq(4000);
 
         addRect(mMesh, 1, 1, 0.5, 0.5);
         // This is a quick way to create parameters for the voice. Trigger
@@ -97,15 +104,13 @@ class Theremin : public SynthVoice {
         createInternalTriggerParameter("vibRise", 0.5, 0.1, 2);
         createInternalTriggerParameter("vibDepth", 0.005, 0.0, 0.3);
 
-        createInternalTriggerParameter("lowPassFilter", 1800, 0, 44000);
-
-        createInternalTriggerParameter("LFO freq", 0.5, 0, 20);
-        createInternalTriggerParameter("LFO phase", 0, 0, 3.14);
-        createInternalTriggerParameter("LFO amp", 0.5, 0, 1);
+        createInternalTriggerParameter("lowPassFilter", 800, 0, 44000);
+        createInternalTriggerParameter("highPassFilter", 900, 0, 44000);
     }
 
     // The audio processing function
-    void onProcess(AudioIOData &io) override {
+    void
+    onProcess(AudioIOData &io) override {
         // Get the values from the parameters and apply them to the
         // corresponding unit generators. You could place these lines in the
         // onTrigger() function, but placing them here allows for realtime
@@ -116,14 +121,20 @@ class Theremin : public SynthVoice {
         float vibDepth = getInternalParameterValue("vibDepth");
         mAmpEnv.lengths()[0] = getInternalParameterValue("attackTime");
         mAmpEnv.lengths()[2] = getInternalParameterValue("releaseTime");
+
+        lpf.freq(getInternalParameter("lowPassFilter"));
+        hpf.freq(getInternalParameter("highPassFilter"));
+
         mPan.pos(getInternalParameterValue("pan"));
         while (io()) {
             mVib.freq(mVibEnv());
             vibValue = mVib();
             mOsc.freq(oscFreq + vibValue * vibDepth * oscFreq);
+            mOsc2.freq(oscFreq + 3 + vibValue * vibDepth * oscFreq);
 
-            float s1 = lpf(mOsc()) * mAmpEnv() *
-                       getInternalParameterValue("amplitude");
+            float s1 = (mOsc() + mOsc2()) / 2 * mAmpEnv() * getInternalParameterValue("amplitude");
+
+            s1 = hpf(lpf(s1));
             float s2;
             mEnvFollow(s1);
             mPan(s1, s1, s2);
@@ -133,25 +144,27 @@ class Theremin : public SynthVoice {
         // We need to let the synth know that this voice is done
         // by calling the free(). This takes the voice out of the
         // rendering chain
-        if (mAmpEnv.done() && (mEnvFollow.value() < 0.001f)) free();
+        if (mAmpEnv.done() && (mEnvFollow.value() < 0.001f))
+            free();
     }
 
     // The graphics processing function
-    void onProcess(Graphics &g) override {}
+    void
+    onProcess(Graphics &g) override {
+    }
 
     // The triggering functions just need to tell the envelope to start or
-    // release The audio processing function checks when the envelope is done to
-    // remove the voice from the processing chain.
-    void onTriggerOn() override {
+    // release The audio processing function checks when the envelope is done
+    // to remove the voice from the processing chain.
+    void
+    onTriggerOn() override {
         mAmpEnv.reset();
         mVibEnv.reset();
 
         mVibEnv.levels(getInternalParameterValue("vibRate1"),
-                       getInternalParameterValue("vibRate2"),
-                       getInternalParameterValue("vibRate2"),
-                       getInternalParameterValue("vibRate1"));
-
-        lpf.freq(getInternalParameter("lowPassFilter"));
+            getInternalParameterValue("vibRate2"),
+            getInternalParameterValue("vibRate2"),
+            getInternalParameterValue("vibRate1"));
 
         /*
         mVibEnv.lengths()[0] = getInternalParameterValue("vibRise");
@@ -160,7 +173,10 @@ class Theremin : public SynthVoice {
         */
     }
 
-    void onTriggerOff() override { mAmpEnv.release(); }
+    void
+    onTriggerOff() override {
+        mAmpEnv.release();
+    }
 };
 
 // We make an app.
@@ -174,20 +190,12 @@ class MyApp : public App {
     Theremin *instrument;
 
     std::vector<NotePair> notes = {
-        NotePair("C", 130.81),  NotePair("C#", 138.59), NotePair("D", 146.83),
-        NotePair("D#", 155.56), NotePair("E", 164.81),  NotePair("F", 174.61),
-        NotePair("F#", 185.00), NotePair("G", 196.00),  NotePair("G#", 207.65),
-        NotePair("A", 220.00),  NotePair("A#", 233.08), NotePair("B", 246.94),
-        NotePair("C", 261.63),  NotePair("C#", 277.18), NotePair("D", 293.66),
-        NotePair("D#", 311.13), NotePair("E", 329.63),  NotePair("F", 349.23),
-        NotePair("F#", 369.99), NotePair("G", 392.00),  NotePair("G#", 415.30),
-        NotePair("A", 440.00),  NotePair("A#", 466.16), NotePair("B", 493.88),
-        NotePair("C", 523.25),  NotePair("C#", 554.37), NotePair("D", 587.33),
-        NotePair("D#", 622.25), NotePair("E", 659.25),  NotePair("F", 698.46),
-        NotePair("F#", 739.99), NotePair("G", 783.99),  NotePair("G#", 830.61),
-        NotePair("A", 880.00),  NotePair("A#", 932.33), NotePair("B", 987.77)};
+        NotePair("E", 415.3), NotePair("F", 440), NotePair("F#", 466.2), NotePair("G", 493.9), NotePair("G#", 523.3), NotePair("A", 554.4), NotePair("A#", 587.3), NotePair("B", 622.3), NotePair("C", 659.3), NotePair("C#", 698.5), NotePair("D", 739.9), NotePair("D#", 783.9), NotePair("E", 830.6), NotePair("F", 880), NotePair("F#", 932.3), NotePair("G", 987.8), NotePair("G#", 1046.5), NotePair("A", 1108.7), NotePair("A#", 1174.7), NotePair("B", 1244.5), NotePair("C", 1318.5), NotePair("C#", 1396.9), NotePair("D", 1479.9), NotePair("D#", 1567.9), NotePair("E", 1661.2)
+    };
 
-    void onCreate() override {
+
+    void
+    onCreate() override {
         navControl().active(
             false);  // Disable navigation via keyboard, since we
                      // will be using keyboard for note triggering
@@ -209,11 +217,13 @@ class MyApp : public App {
     }
 
     // The audio callback function. Called when audio hardware requires data
-    void onSound(AudioIOData &io) override {
+    void
+    onSound(AudioIOData &io) override {
         synthManager.render(io);  // Render audio
     }
 
-    void onAnimate(double dt) override {
+    void
+    onAnimate(double dt) override {
         // The GUI is prepared here
         imguiBeginFrame();
         // Draw a window that contains the synth control panel
@@ -221,18 +231,17 @@ class MyApp : public App {
         imguiEndFrame();
     }
 
-    bool onMouseMove(const Mouse &m) override {
+    bool
+    onMouseMove(const Mouse &m) override {
         // Get the mouse position
         int x = m.x();
         int y = m.y();
         // Print the mouse position
-        instrument->setInternalParameterValue("frequency", x);
+        instrument->setInternalParameterValue("frequency", x + 400);
 
         // std::cout << "pos: " << x << ", " << y << std::endl;
 
-        instrument->setInternalParameterValue(
-            "amplitude",
-            clamp((float)(height() - (y + 50)) / (height() * 0.8f), 0, 1));
+        instrument->setInternalParameterValue("amplitude", clamp((float)(height() - (y + 50)) / (height() * 0.8f), 0, 1));
 
         // instrument->triggerOn();
 
@@ -240,7 +249,8 @@ class MyApp : public App {
     }
 
     // The graphics callback function.
-    void onDraw(Graphics &g) override {
+    void
+    onDraw(Graphics &g) override {
         g.clear();
 
         // This example uses only the orthogonal projection for 2D drawing
@@ -251,48 +261,70 @@ class MyApp : public App {
 
         drawRect(g, 0, 50, width(), 2);
 
-
-        for (int i = 0; i < notes.size(); i++){
-            drawRect(g, notes[i].freq, 70, 2, 40);
+        for (int i = 0; i < notes.size(); i++) {
+            drawRect(g, notes[i].freq - 400, 70, 2, 40);
         }
 
         // For some reason rects won't draw after prints?
-        for (int i = 0; i < notes.size(); i++){
-            print(g, notes[i].note, notes[i].freq - 8, 15);
+        for (int i = 0; i < notes.size(); i++) {
+            print(g, notes[i].note, notes[i].freq - 8 - 400, 15);
         }
-
-
 
         // GUI is drawn here
         imguiDraw();
     }
 
     // Whenever a key is pressed, this function is called
-    bool onKeyDown(Keyboard const &k) override {
+    bool
+    onKeyDown(Keyboard const &k) override {
         if (ParameterGUI::usingKeyboard()) {  // Ignore keys if GUI is using
             // keyboard
             return true;
+        }
+
+        // Control lpf and hpf
+        int button = k.key();
+        std::cout << button << std::endl;
+
+        if (button == 49) {  // 1
+            instrument->setInternalParameterValue("lowPassFilter", instrument->getInternalParameter("lowPassFilter") - 100);
+        } else if (button == 50) {
+            instrument->setInternalParameterValue("lowPassFilter", instrument->getInternalParameter("lowPassFilter") + 100);
+        } else if (button == 51) {  // 3
+            instrument->setInternalParameterValue("highPassFilter", instrument->getInternalParameter("highPassFilter") - 100);
+        } else if (button == 52) {
+            instrument->setInternalParameterValue("highPassFilter", instrument->getInternalParameter("highPassFilter") + 100);
         }
 
         return true;
     }
 
     // Whenever a key is released this function is called
-    bool onKeyUp(Keyboard const &k) override { return true; }
+    bool
+    onKeyUp(Keyboard const &k) override {
+        return true;
+    }
 
     // Whenever the window size changes this function is called
-    void onResize(int w, int h) override {}
+    void
+    onResize(int w, int h) override {
+    }
 
-    void onExit() override { imguiShutdown(); }
+    void
+    onExit() override {
+        imguiShutdown();
+    }
 
-    void drawRect(Graphics &g, int x, int y, int width, int height) {
+    void
+    drawRect(Graphics &g, int x, int y, int width, int height) {
         g.tint(1, 1, 1);
         Mesh mesh;
         addRect(mesh, width, height, x + width / 2, y - height / 2);
         g.draw(mesh);
     }
 
-    void print(Graphics &g, std::string text, double x, double y) {
+    void
+    print(Graphics &g, std::string text, double x, double y) {
         g.pushMatrix();
         fontRender.write(text.c_str(), fontSize);
         fontRender.renderAt(g, {x, y, 0.0});
